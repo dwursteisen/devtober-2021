@@ -1,6 +1,7 @@
 package your.game
 
 import com.curiouscreature.kotlin.math.Quaternion
+import com.curiouscreature.kotlin.math.clamp
 import com.curiouscreature.kotlin.math.pow
 import com.github.dwursteisen.minigdx.GameContext
 import com.github.dwursteisen.minigdx.Seconds
@@ -20,22 +21,52 @@ import com.github.dwursteisen.minigdx.graph.GraphScene
 import com.github.dwursteisen.minigdx.input.Key
 import com.github.dwursteisen.minigdx.math.Vector3
 import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
 
 class Canon : StateMachineComponent()
 
-class Bomb(var direction: Vector3 = Vector3(1f, 0f, 0f)) : Component
+class Bomb(var direction: Vector3 = Vector3(9f, 0f, 0f)) : Component
+class Arrow(var t: Seconds = 0f) : Component
 
 class BombSystem : System(EntityQuery.of(Bomb::class)) {
 
     override fun update(delta: Seconds, entity: Entity) {
-        entity.position.addLocalTranslation(entity.get(Bomb::class).direction.copy().scale(9f), delta = delta)
+        val direction = entity.get(Bomb::class).direction
+        entity.position.addLocalTranslation(direction, delta = delta)
+    }
+}
+
+class ArrowSystem : System(EntityQuery.of(Arrow::class)) {
+
+    val interpo = Pow(2)
+
+    override fun update(delta: Seconds, entity: Entity) {
+        val arrow = entity.get(Arrow::class)
+        arrow.t += delta
+
+        // FIXME: le 3f ne devrait pas être nécessaire. Vu que l'origin du model :thinking:
+        entity.position.setLocalTranslation(y =cos(arrow.t * 5f) * 0.5f)
+        entity.position.setLocalRotation(y = interpo.apply(clamp(cos(arrow.t * 5f), 0f, 1f)) * 360)
     }
 }
 
 class CanonSystem : StateMachineSystem(Canon::class) {
 
+    val arrows by interested(EntityQuery.of(Arrow::class))
+
+    inner class Wait : State() {
+
+    }
+
     inner class Selected : State() {
+
+        override fun onEnter(entity: Entity) {
+            arrows.forEach {
+                it.position.setLocalTranslation(entity.position.localTranslation)
+            }
+        }
 
         override fun update(delta: Seconds, entity: Entity): State? {
             if (input.isKeyJustPressed(Key.SPACE)) {
@@ -78,17 +109,8 @@ class CanonSystem : StateMachineSystem(Canon::class) {
 
         override fun onEnter(entity: Entity) {
             val bomb = entityFactory.createFromTemplate("bomb")
-            // FIMXE: Should be done by the template
-            bomb.add(
-                Bomb(
-                    Vector3(0f, 0f, 1f).rotate(
-                        x = 0f,
-                        y = 1f,
-                        z = 0f,
-                        angle = entity.position.rotation.z
-                    )
-                )
-            )
+            bomb.position.setLocalTranslation(entity.position.localTranslation)
+            bomb.get(Bomb::class).direction.rotate(entity.position.localQuaternion)
         }
 
         override fun update(delta: Seconds, entity: Entity): State? {
@@ -101,12 +123,17 @@ class CanonSystem : StateMachineSystem(Canon::class) {
     }
 
     override fun initialState(entity: Entity): State {
-        return Selected()
+        if (entity.name == "canon") {
+            return Selected()
+        } else {
+            return Wait()
+        }
     }
 
     companion object {
 
-        val interpo = Elastic(2f, 10f, 7, 1f)
+        // val interpo = Elastic(2f, 10f, 7, 1f)
+        val interpo = Pow(2)
     }
 }
 
@@ -122,10 +149,12 @@ class MyGame(override val gameContext: GameContext) : Game {
                 entity.add(Canon())
             } else if (node.name.startsWith("bomb")) {
                 entityFactory.registerTemplate("bomb") {
-                    val entity = entityFactory.createFromNode(node)
-                    // entity.add(Bomb())
-                    entity
+                    entityFactory.createFromNode(node)
+                        .add(Bomb())
                 }
+            } else if (node.name == "arrow") {
+                entityFactory.createFromNode(node)
+                    .add(Arrow())
             } else {
                 entityFactory.createFromNode(node)
             }
@@ -135,7 +164,8 @@ class MyGame(override val gameContext: GameContext) : Game {
     override fun createSystems(engine: Engine): List<System> {
         return listOf(
             BombSystem(),
-            CanonSystem()
+            CanonSystem(),
+            ArrowSystem()
         )
     }
 }
@@ -151,7 +181,7 @@ class Elastic(val value: Float, val power: Float, bounces: Int, val scale: Float
             return pow(
                 value,
                 (power * (a - 1))
-            ) as Float * sin(a * bounces) * scale / 2
+            ) * sin(a * bounces) * scale / 2
         }
         a = 1 - a
         a *= 2f
@@ -167,3 +197,23 @@ class Elastic(val value: Float, val power: Float, bounces: Int, val scale: Float
         return start + (end - start) * apply(blend)
     }
 }
+
+class Pow(val power: Int) {
+
+    /** @param blend Alpha value between 0 and 1.
+     */
+    fun apply(start: Float, end: Float, blend: Float): Float {
+        return start + (end - start) * apply(blend)
+    }
+
+    fun apply(a: Float): Float {
+        return if (a <= 0.5f) pow(
+            (a * 2f),
+            power.toFloat()
+        ) / 2 else pow(
+            ((a - 1) * 2f),
+            power.toFloat()
+        ) / (if (power % 2 == 0) -2 else 2) + 1
+    }
+}
+
