@@ -11,30 +11,64 @@ import com.github.dwursteisen.minigdx.ecs.components.StateMachineComponent
 import com.github.dwursteisen.minigdx.ecs.entities.Entity
 import com.github.dwursteisen.minigdx.ecs.entities.EntityFactory
 import com.github.dwursteisen.minigdx.ecs.entities.position
+import com.github.dwursteisen.minigdx.ecs.events.Event
+import com.github.dwursteisen.minigdx.ecs.physics.AABBCollisionResolver
 import com.github.dwursteisen.minigdx.ecs.states.State
 import com.github.dwursteisen.minigdx.ecs.systems.EntityQuery
 import com.github.dwursteisen.minigdx.ecs.systems.StateMachineSystem
 import com.github.dwursteisen.minigdx.ecs.systems.System
 import com.github.dwursteisen.minigdx.file.get
 import com.github.dwursteisen.minigdx.game.Game
+import com.github.dwursteisen.minigdx.game.Storyboard
+import com.github.dwursteisen.minigdx.game.StoryboardAction
+import com.github.dwursteisen.minigdx.game.StoryboardEvent
 import com.github.dwursteisen.minigdx.graph.GraphScene
 import com.github.dwursteisen.minigdx.input.Key
 import com.github.dwursteisen.minigdx.math.Vector3
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
 class Canon : StateMachineComponent()
 
-class Bomb(var direction: Vector3 = Vector3(9f, 0f, 0f)) : Component
+class Bomb(var direction: Vector3 = Vector3(18f, 0f, 0f), var emitter: Entity? = null) : Component
 class Arrow(var t: Seconds = 0f) : Component
+class Target : Component
+
+class SelectOtherCanon(val target: Entity, val emitter: Entity) : Event
+
+class LevelStoryboadEvent : StoryboardEvent
 
 class BombSystem : System(EntityQuery.of(Bomb::class)) {
+
+    val collider = AABBCollisionResolver()
+
+    val canons by interested(EntityQuery.of(Canon::class))
+
+    val target by interested(EntityQuery.of(Target::class))
 
     override fun update(delta: Seconds, entity: Entity) {
         val direction = entity.get(Bomb::class).direction
         entity.position.addLocalTranslation(direction, delta = delta)
+
+
+        for (it in canons) {
+            if (collider.collide(entity, it)) {
+                if (it.get(Canon::class).hasCurrentState(CanonSystem.Wait::class)) {
+                    val emitter = entity.get(Bomb::class).emitter!!
+                    entity.destroy()
+                    emit(SelectOtherCanon(it, emitter), EntityQuery.of(Canon::class))
+                    return
+                }
+            }
+        }
+
+        for(it in target) {
+            if(collider.collide(entity, it)) {
+                emit(LevelStoryboadEvent())
+                return
+            }
+        }
     }
 }
 
@@ -46,8 +80,7 @@ class ArrowSystem : System(EntityQuery.of(Arrow::class)) {
         val arrow = entity.get(Arrow::class)
         arrow.t += delta
 
-        // FIXME: le 3f ne devrait pas être nécessaire. Vu que l'origin du model :thinking:
-        entity.position.setLocalTranslation(y =cos(arrow.t * 5f) * 0.5f)
+        entity.position.setLocalTranslation(y = cos(arrow.t * 5f) * 0.5f)
         entity.position.setLocalRotation(y = interpo.apply(clamp(cos(arrow.t * 5f), 0f, 1f)) * 360)
     }
 }
@@ -58,6 +91,15 @@ class CanonSystem : StateMachineSystem(Canon::class) {
 
     inner class Wait : State() {
 
+        override fun configure(entity: Entity) {
+            onEvent(SelectOtherCanon::class) { event ->
+                if (event.target == entity) {
+                    Selected()
+                } else {
+                    null
+                }
+            }
+        }
     }
 
     inner class Selected : State() {
@@ -77,6 +119,16 @@ class CanonSystem : StateMachineSystem(Canon::class) {
                 return Turning(entity.position.localQuaternion, 90f)
             }
             return null
+        }
+
+        override fun configure(entity: Entity) {
+            onEvent(SelectOtherCanon::class) { event ->
+                if(event.emitter == entity) {
+                    Wait()
+                } else {
+                    null
+                }
+            }
         }
     }
 
@@ -111,6 +163,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
             val bomb = entityFactory.createFromTemplate("bomb")
             bomb.position.setLocalTranslation(entity.position.localTranslation)
             bomb.get(Bomb::class).direction.rotate(entity.position.localQuaternion)
+            bomb.get(Bomb::class).emitter = entity
         }
 
         override fun update(delta: Seconds, entity: Entity): State? {
@@ -119,6 +172,16 @@ class CanonSystem : StateMachineSystem(Canon::class) {
             }
             t -= delta
             return null
+        }
+
+        override fun configure(entity: Entity) {
+            onEvent(SelectOtherCanon::class) { event ->
+                if(event.emitter == entity) {
+                    Wait()
+                } else {
+                    null
+                }
+            }
         }
     }
 
@@ -142,6 +205,14 @@ class MyGame(override val gameContext: GameContext) : Game {
 
     private val scene by gameContext.fileHandler.get<GraphScene>("assets.protobuf")
 
+    override fun createStoryBoard(event: StoryboardEvent): StoryboardAction {
+        return if(event is LevelStoryboadEvent) {
+            Storyboard.replaceWith { MyGame(gameContext) }
+        } else {
+            Storyboard.stayHere()
+        }
+    }
+
     override fun createEntities(entityFactory: EntityFactory) {
         scene.nodes.forEach { node ->
             if (node.name.startsWith("canon")) {
@@ -155,6 +226,9 @@ class MyGame(override val gameContext: GameContext) : Game {
             } else if (node.name == "arrow") {
                 entityFactory.createFromNode(node)
                     .add(Arrow())
+            } else if (node.name == "target") {
+                entityFactory.createFromNode(node)
+                    .add(Target())
             } else {
                 entityFactory.createFromNode(node)
             }
