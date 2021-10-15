@@ -8,6 +8,8 @@ import com.github.dwursteisen.minigdx.Seconds
 import com.github.dwursteisen.minigdx.ecs.Engine
 import com.github.dwursteisen.minigdx.ecs.components.Component
 import com.github.dwursteisen.minigdx.ecs.components.StateMachineComponent
+import com.github.dwursteisen.minigdx.ecs.components.particles.ParticleConfiguration.Companion.spark
+import com.github.dwursteisen.minigdx.ecs.components.particles.ParticleEmitterComponent
 import com.github.dwursteisen.minigdx.ecs.entities.Entity
 import com.github.dwursteisen.minigdx.ecs.entities.EntityFactory
 import com.github.dwursteisen.minigdx.ecs.entities.position
@@ -25,6 +27,7 @@ import com.github.dwursteisen.minigdx.game.StoryboardEvent
 import com.github.dwursteisen.minigdx.graph.GraphScene
 import com.github.dwursteisen.minigdx.input.Key
 import com.github.dwursteisen.minigdx.math.Vector3
+import kotlinx.serialization.json.buildJsonObject
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -34,6 +37,7 @@ class Canon : StateMachineComponent()
 class Bomb(var direction: Vector3 = Vector3(18f, 0f, 0f), var emitter: Entity? = null) : Component
 class Arrow(var t: Seconds = 0f) : Component
 class Target : Component
+class DestroyBox : Component
 
 class SelectOtherCanon(val target: Entity, val emitter: Entity) : Event
 
@@ -46,6 +50,14 @@ class BombSystem : System(EntityQuery.of(Bomb::class)) {
     val canons by interested(EntityQuery.of(Canon::class))
 
     val target by interested(EntityQuery.of(Target::class))
+
+    val destroyBox by interested(EntityQuery.of(DestroyBox::class))
+
+    override fun onEntityAdded(entity: Entity) {
+        entity.chidren.first()
+            .get(ParticleEmitterComponent::class)
+            .emit()
+    }
 
     override fun update(delta: Seconds, entity: Entity) {
         val direction = entity.get(Bomb::class).direction
@@ -63,7 +75,14 @@ class BombSystem : System(EntityQuery.of(Bomb::class)) {
             }
         }
 
-        for(it in target) {
+        for (it in target) {
+            if (collider.collide(entity, it)) {
+                emit(LevelStoryboadEvent())
+                return
+            }
+        }
+
+        for(it in destroyBox) {
             if(collider.collide(entity, it)) {
                 emit(LevelStoryboadEvent())
                 return
@@ -123,7 +142,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
 
         override fun configure(entity: Entity) {
             onEvent(SelectOtherCanon::class) { event ->
-                if(event.emitter == entity) {
+                if (event.emitter == entity) {
                     Wait()
                 } else {
                     null
@@ -164,6 +183,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
             bomb.position.setLocalTranslation(entity.position.localTranslation)
             bomb.get(Bomb::class).direction.rotate(entity.position.localQuaternion)
             bomb.get(Bomb::class).emitter = entity
+            bomb.position.setLocalRotation(entity.position.localQuaternion)
         }
 
         override fun update(delta: Seconds, entity: Entity): State? {
@@ -176,7 +196,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
 
         override fun configure(entity: Entity) {
             onEvent(SelectOtherCanon::class) { event ->
-                if(event.emitter == entity) {
+                if (event.emitter == entity) {
                     Wait()
                 } else {
                     null
@@ -206,7 +226,7 @@ class MyGame(override val gameContext: GameContext) : Game {
     private val scene by gameContext.fileHandler.get<GraphScene>("assets.protobuf")
 
     override fun createStoryBoard(event: StoryboardEvent): StoryboardAction {
-        return if(event is LevelStoryboadEvent) {
+        return if (event is LevelStoryboadEvent) {
             Storyboard.replaceWith { MyGame(gameContext) }
         } else {
             Storyboard.stayHere()
@@ -220,8 +240,18 @@ class MyGame(override val gameContext: GameContext) : Game {
                 entity.add(Canon())
             } else if (node.name.startsWith("bomb")) {
                 entityFactory.registerTemplate("bomb") {
+                    val bombParticles = entityFactory.createParticles(spark(
+                        factory = { entityFactory.createFromNode(node) },
+                        velocity = 2f,
+                        ttl = 0.6f,
+                        numberOfParticles = 7,
+                        time = -1,
+                        duration = 0.1f
+                    ))
                     entityFactory.createFromNode(node)
-                        .add(Bomb())
+                        .add(Bomb()).apply {
+                            bombParticles.attachTo(this)
+                        }
                 }
             } else if (node.name == "arrow") {
                 entityFactory.createFromNode(node)
@@ -229,6 +259,9 @@ class MyGame(override val gameContext: GameContext) : Game {
             } else if (node.name == "target") {
                 entityFactory.createFromNode(node)
                     .add(Target())
+            } else if(node.name.startsWith("Empty")) {
+                entityFactory.createFromNode(node)
+                    .add(DestroyBox())
             } else {
                 entityFactory.createFromNode(node)
             }
