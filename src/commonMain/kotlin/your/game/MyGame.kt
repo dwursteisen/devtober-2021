@@ -27,7 +27,6 @@ import com.github.dwursteisen.minigdx.game.StoryboardEvent
 import com.github.dwursteisen.minigdx.graph.GraphScene
 import com.github.dwursteisen.minigdx.input.Key
 import com.github.dwursteisen.minigdx.math.Vector3
-import kotlinx.serialization.json.buildJsonObject
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -82,8 +81,8 @@ class BombSystem : System(EntityQuery.of(Bomb::class)) {
             }
         }
 
-        for(it in destroyBox) {
-            if(collider.collide(entity, it)) {
+        for (it in destroyBox) {
+            if (collider.collide(entity, it)) {
                 emit(LevelStoryboadEvent())
                 return
             }
@@ -240,14 +239,16 @@ class MyGame(override val gameContext: GameContext) : Game {
                 entity.add(Canon())
             } else if (node.name.startsWith("bomb")) {
                 entityFactory.registerTemplate("bomb") {
-                    val bombParticles = entityFactory.createParticles(spark(
-                        factory = { entityFactory.createFromNode(node) },
-                        velocity = 2f,
-                        ttl = 0.6f,
-                        numberOfParticles = 7,
-                        time = -1,
-                        duration = 0.1f
-                    ))
+                    val bombParticles = entityFactory.createParticles(
+                        spark(
+                            factory = { entityFactory.createFromNode(node) },
+                            velocity = 2f,
+                            ttl = 0.6f,
+                            numberOfParticles = 7,
+                            time = -1,
+                            duration = 0.1f
+                        )
+                    )
                     entityFactory.createFromNode(node)
                         .add(Bomb()).apply {
                             bombParticles.attachTo(this)
@@ -257,9 +258,24 @@ class MyGame(override val gameContext: GameContext) : Game {
                 entityFactory.createFromNode(node)
                     .add(Arrow())
             } else if (node.name == "target") {
-                entityFactory.createFromNode(node)
+                val target = entityFactory.createFromNode(node)
                     .add(Target())
-            } else if(node.name.startsWith("Empty")) {
+
+                val bomb = scene.nodes.first { it.name.startsWith("bomb") }
+                val targetParticles = entityFactory.createParticles(
+                    spark(
+                        factory = { entityFactory.createFromNode(bomb) },
+                        velocity = 3f,
+                        ttl = 1f,
+                        numberOfParticles = 6,
+                        time = -1,
+                        duration = 5f,
+                        emitOnStartup = true
+                    )
+                )
+                targetParticles.attachTo(target)
+                targetParticles.position.addLocalRotation(y = 90f)
+            } else if (node.name.startsWith("Empty")) {
                 entityFactory.createFromNode(node)
                     .add(DestroyBox())
             } else {
