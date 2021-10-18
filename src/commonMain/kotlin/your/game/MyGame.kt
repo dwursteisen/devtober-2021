@@ -1,6 +1,7 @@
 package your.game
 
 import com.curiouscreature.kotlin.math.Quaternion
+import com.curiouscreature.kotlin.math.Quaternion.Companion.fromEulers
 import com.curiouscreature.kotlin.math.clamp
 import com.curiouscreature.kotlin.math.pow
 import com.github.dwursteisen.minigdx.GameContext
@@ -26,6 +27,7 @@ import com.github.dwursteisen.minigdx.game.StoryboardAction
 import com.github.dwursteisen.minigdx.game.StoryboardEvent
 import com.github.dwursteisen.minigdx.graph.GraphScene
 import com.github.dwursteisen.minigdx.input.Key
+import com.github.dwursteisen.minigdx.math.Vector2
 import com.github.dwursteisen.minigdx.math.Vector3
 import kotlin.math.PI
 import kotlin.math.cos
@@ -129,12 +131,82 @@ class CanonSystem : StateMachineSystem(Canon::class) {
         }
 
         override fun update(delta: Seconds, entity: Entity): State? {
+            fun colineaire(entity: Entity): Vector2 {
+                val direction = Vector3(0f, 0f, 1f).rotate(entity.position.localQuaternion)
+
+                val down = Vector3(0f, 0f, 1f).dot(direction)
+                val right = Vector3(1f, 0f, 0f).dot(direction)
+
+                return Vector2(down, right)
+            }
+
             if (input.isKeyJustPressed(Key.SPACE)) {
                 return Fire()
             } else if (input.isKeyJustPressed(Key.ARROW_LEFT)) {
-                return Turning(entity.position.localQuaternion, -90f)
+                val (down, right) = colineaire(entity)
+
+                val angle = if (down > 0.5f) {
+                    // turn left
+                    -90f
+                } else if (down < -0.5f) {
+                    // turn right
+                    90f
+                } else if (right > 0.5) {
+                    // full turn
+                    180f
+                } else {
+                    0f
+                }
+
+                return Turning(entity.position.localQuaternion, fromEulers(0f, 1f, 0f, -90f), angle)
             } else if (input.isKeyJustPressed(Key.ARROW_RIGHT)) {
-                return Turning(entity.position.localQuaternion, 90f)
+                val (down, right) = colineaire(entity)
+
+                val angle = if (down > 0.5f) {
+                    // turn left
+                    90f
+                } else if (down < -0.5f) {
+                    // turn right
+                    -90f
+                } else if (right > 0.5) {
+                    // full turn
+                    0f
+                } else {
+                    180f
+                }
+                return Turning(entity.position.localQuaternion, fromEulers(0f, 1f, 0f, 90f), angle)
+            } else if (input.isKeyJustPressed(Key.ARROW_UP)) {
+                val (down, right) = colineaire(entity)
+
+                val angle = if (down > 0.5f) {
+                    // turn left
+                    180f
+                } else if (down < -0.5f) {
+                    // turn right
+                    0f
+                } else if (right > 0.5) {
+                    // full turn
+                    90f
+                } else {
+                    -90f
+                }
+                return Turning(entity.position.localQuaternion, fromEulers(0f, 1f, 0f, 180f), angle)
+            } else if (input.isKeyJustPressed(Key.ARROW_DOWN)) {
+                val (down, right) = colineaire(entity)
+
+                val angle = if (down > 0.5f) {
+                    // turn left
+                    0f
+                } else if (down < -0.5f) {
+                    // turn right
+                    180f
+                } else if (right > 0.5) {
+                    // full turn
+                    -90f
+                } else {
+                    90f
+                }
+                return Turning(entity.position.localQuaternion, fromEulers(0f, 1f, 0f, 0f), angle)
             }
             return null
         }
@@ -150,17 +222,26 @@ class CanonSystem : StateMachineSystem(Canon::class) {
         }
     }
 
-    inner class Turning(val startQuaternion: Quaternion, val angle: Float) : State() {
+    inner class Turning(val startQuaternion: Quaternion, val target: Quaternion, var angle: Float = 90f) : State() {
 
         var current = 0f
 
         val duration = 0.5f
 
+        var turned = 0f
+
         override fun update(delta: Seconds, entity: Entity): State? {
             current += delta / duration
 
-            val a = interpo.apply(0f, angle, current)
-            entity.position.setLocalRotation(startQuaternion).addLocalRotation(y = a)
+            val percent = interpo.apply(current)
+            val toTurn = percent * angle
+
+            val remaining = toTurn - turned
+
+            turned = toTurn
+            entity.position
+                .addLocalRotation(y = remaining)
+
             if (current >= 1.0) {
                 return Selected()
             } else {
@@ -169,7 +250,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
         }
 
         override fun onExit(entity: Entity) {
-            entity.position.setLocalRotation(startQuaternion).addLocalRotation(y = angle)
+            entity.position.setLocalRotation(target)
         }
     }
 
