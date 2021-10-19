@@ -155,7 +155,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
                     // full turn
                     180f
                 } else {
-                    0f
+                    return null
                 }
 
                 return Turning(entity.position.localQuaternion, fromEulers(0f, 1f, 0f, -90f), angle)
@@ -170,7 +170,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
                     -90f
                 } else if (right > 0.5) {
                     // full turn
-                    0f
+                    return null
                 } else {
                     180f
                 }
@@ -183,7 +183,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
                     180f
                 } else if (down < -0.5f) {
                     // turn right
-                    0f
+                    return null
                 } else if (right > 0.5) {
                     // full turn
                     90f
@@ -196,7 +196,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
 
                 val angle = if (down > 0.5f) {
                     // turn left
-                    0f
+                    return null
                 } else if (down < -0.5f) {
                     // turn right
                     180f
@@ -300,6 +300,13 @@ class CanonSystem : StateMachineSystem(Canon::class) {
     }
 }
 
+class TargetSystem: System(EntityQuery.of(Target::class)) {
+
+    override fun update(delta: Seconds, entity: Entity) {
+        entity.position.addLocalRotation(y = 180f, delta = delta)
+    }
+}
+
 @OptIn(ExperimentalStdlibApi::class)
 class MyGame(override val gameContext: GameContext) : Game {
 
@@ -369,7 +376,8 @@ class MyGame(override val gameContext: GameContext) : Game {
         return listOf(
             BombSystem(),
             CanonSystem(),
-            ArrowSystem()
+            ArrowSystem(),
+            TargetSystem()
         )
     }
 }
