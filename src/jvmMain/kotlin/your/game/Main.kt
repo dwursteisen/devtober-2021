@@ -32,7 +32,7 @@ object Main {
                 )
             },
             // Creation of your game
-            gameFactory = { MyGame(it) }
+            gameFactory = { Menu(it) }
         ).start() // Don't forget to call the start method to run your game!
     }
 }

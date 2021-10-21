@@ -308,13 +308,13 @@ class TargetSystem: System(EntityQuery.of(Target::class)) {
 }
 
 @OptIn(ExperimentalStdlibApi::class)
-class MyGame(override val gameContext: GameContext) : Game {
+class MyGame(override val gameContext: GameContext, level: String = "assets.protobuf") : Game {
 
-    private val scene by gameContext.fileHandler.get<GraphScene>("assets.protobuf")
+    private val scene by gameContext.fileHandler.get<GraphScene>(level)
 
     override fun createStoryBoard(event: StoryboardEvent): StoryboardAction {
         return if (event is LevelStoryboadEvent) {
-            Storyboard.replaceWith { MyGame(gameContext) }
+            Storyboard.replaceWith { Menu(gameContext) }
         } else {
             Storyboard.stayHere()
         }
