@@ -42,7 +42,8 @@ class DestroyBox : Component
 
 class SelectOtherCanon(val target: Entity, val emitter: Entity) : Event
 
-class LevelStoryboadEvent : StoryboardEvent
+class NextLevelStoryboardEvent : StoryboardEvent
+class RestartLevelStoryboardEvent : StoryboardEvent
 
 class BombSystem : System(EntityQuery.of(Bomb::class)) {
 
@@ -78,14 +79,14 @@ class BombSystem : System(EntityQuery.of(Bomb::class)) {
 
         for (it in target) {
             if (collider.collide(entity, it)) {
-                emit(LevelStoryboadEvent())
+                emit(NextLevelStoryboardEvent())
                 return
             }
         }
 
         for (it in destroyBox) {
             if (collider.collide(entity, it)) {
-                emit(LevelStoryboadEvent())
+                emit(RestartLevelStoryboardEvent())
                 return
             }
         }
@@ -300,7 +301,7 @@ class CanonSystem : StateMachineSystem(Canon::class) {
     }
 }
 
-class TargetSystem: System(EntityQuery.of(Target::class)) {
+class TargetSystem : System(EntityQuery.of(Target::class)) {
 
     override fun update(delta: Seconds, entity: Entity) {
         entity.position.addLocalRotation(y = 180f, delta = delta)
@@ -308,13 +309,20 @@ class TargetSystem: System(EntityQuery.of(Target::class)) {
 }
 
 @OptIn(ExperimentalStdlibApi::class)
-class MyGame(override val gameContext: GameContext, level: String = "assets.protobuf") : Game {
+class MyGame(override val gameContext: GameContext, val level: String = "level0a.protobuf") : Game {
 
+    private val nextLevel = mapOf(
+        "level0a.protobuf" to "level0b.protobuf",
+        "level0b.protobuf" to "level1.protobuf",
+        "level1.protobuf" to "end.protobuf"
+    )
     private val scene by gameContext.fileHandler.get<GraphScene>(level)
 
     override fun createStoryBoard(event: StoryboardEvent): StoryboardAction {
-        return if (event is LevelStoryboadEvent) {
-            Storyboard.replaceWith { Menu(gameContext) }
+        return if (event is NextLevelStoryboardEvent) {
+            Storyboard.replaceWith { MyGame(gameContext, nextLevel.getValue(level)) }
+        } else if (event is RestartLevelStoryboardEvent) {
+            Storyboard.replaceWith { MyGame(gameContext, level) }
         } else {
             Storyboard.stayHere()
         }
