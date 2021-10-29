@@ -8,6 +8,7 @@ import com.github.dwursteisen.minigdx.GameContext
 import com.github.dwursteisen.minigdx.Seconds
 import com.github.dwursteisen.minigdx.ecs.Engine
 import com.github.dwursteisen.minigdx.ecs.components.Component
+import com.github.dwursteisen.minigdx.ecs.components.CoordinateConverter
 import com.github.dwursteisen.minigdx.ecs.components.StateMachineComponent
 import com.github.dwursteisen.minigdx.ecs.components.particles.ParticleConfiguration.Companion.spark
 import com.github.dwursteisen.minigdx.ecs.components.particles.ParticleEmitterComponent
@@ -32,6 +33,7 @@ import com.github.dwursteisen.minigdx.math.Vector3
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.random.Random
 
 class Canon : StateMachineComponent()
 
@@ -39,6 +41,12 @@ class Bomb(var direction: Vector3 = Vector3(18f, 0f, 0f), var emitter: Entity? =
 class Arrow(var t: Seconds = 0f) : Component
 class Target : Component
 class DestroyBox : Component
+class Car(
+    var start: Vector3 = Vector3(),
+    var end: Vector3 = Vector3(),
+    var direction: Vector3 = Vector3(-4f),
+    var coolDown: Float = 0f
+) : Component
 
 class SelectOtherCanon(val target: Entity, val emitter: Entity) : Event
 
@@ -308,8 +316,32 @@ class TargetSystem : System(EntityQuery.of(Target::class)) {
     }
 }
 
+class CarSystem : System(EntityQuery.of(Car::class)) {
+
+    val coolDown = 3f
+
+    override fun update(delta: Seconds, entity: Entity) {
+        val car = entity.get(Car::class)
+        if (car.coolDown > 0f) {
+            car.coolDown -= delta
+            return
+        }
+
+        entity.position.addLocalTranslation(car.direction, delta = delta, using = CoordinateConverter.World)
+        if (entity.position.localTranslation.dist2(car.end) < 0.3f * 0.3f) {
+            entity.position.setLocalTranslation(car.end)
+            entity.position.addLocalRotation(y = 180f)
+            car.direction.rotate(0f, 1f, 0f, 180f)
+            car.coolDown = coolDown
+            val end = car.end.copy()
+            car.end.set(car.start)
+            car.start.set(end)
+        }
+    }
+}
+
 @OptIn(ExperimentalStdlibApi::class)
-class MyGame(override val gameContext: GameContext, val level: String = "level0a.protobuf") : Game {
+class MyGame(override val gameContext: GameContext, val level: String = "level2.protobuf") : Game {
 
     private val nextLevel = mapOf(
         "level0a.protobuf" to "level0b.protobuf",
@@ -374,6 +406,14 @@ class MyGame(override val gameContext: GameContext, val level: String = "level0a
             } else if (node.name.startsWith("Empty")) {
                 entityFactory.createFromNode(node)
                     .add(DestroyBox())
+            } else if (node.name.startsWith("car")) {
+                val component = Car(coolDown = Random.nextFloat() * 3f)
+                val e = entityFactory.createFromNode(node)
+                    .add(component)
+                    .add(DestroyBox())
+                component.direction.rotate(e.position.localQuaternion)
+                component.start.set(e.position.localTranslation)
+                component.end.set(e.position.localTranslation).add(component.direction.copy().normalize().scale(5f))
             } else {
                 entityFactory.createFromNode(node)
             }
@@ -385,7 +425,8 @@ class MyGame(override val gameContext: GameContext, val level: String = "level0a
             BombSystem(),
             CanonSystem(),
             ArrowSystem(),
-            TargetSystem()
+            TargetSystem(),
+            CarSystem()
         )
     }
 }
