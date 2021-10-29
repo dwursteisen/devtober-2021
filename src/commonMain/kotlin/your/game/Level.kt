@@ -341,13 +341,16 @@ class CarSystem : System(EntityQuery.of(Car::class)) {
 }
 
 @OptIn(ExperimentalStdlibApi::class)
-class MyGame(override val gameContext: GameContext, val level: String = "level2.protobuf") : Game {
+class MyGame(override val gameContext: GameContext, val level: String = "level0a.protobuf") : Game {
 
     private val nextLevel = mapOf(
         "level0a.protobuf" to "level0b.protobuf",
         "level0b.protobuf" to "level1.protobuf",
-        "level1.protobuf" to "end.protobuf"
+        "level1.protobuf" to "level2.protobuf",
+        "level2.protobuf" to "level3.protobuf",
+        "level3.protobuf" to "end.protobuf",
     )
+
     private val scene by gameContext.fileHandler.get<GraphScene>(level)
 
     override fun createStoryBoard(event: StoryboardEvent): StoryboardAction {
